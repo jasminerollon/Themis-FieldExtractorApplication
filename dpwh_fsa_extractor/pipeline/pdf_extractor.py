@@ -7,7 +7,6 @@ RAW_PDF_DIR = str(Path(__file__).parent.parent / "data" / "raw")
 EXTRACTED_DIR = str(Path(__file__).parent.parent / "data" / "extracted")
 
 PDF_FILES = [
-    "COA-DPWH2024.pdf",
     "DPWH-BENGUET-INFRA.pdf",
     "DPWH-CENTRALOFFICE-INFRA.pdf",
     "DPWH-MIMAROPA-INFRA.pdf",

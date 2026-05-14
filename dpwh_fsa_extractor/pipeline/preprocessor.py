@@ -21,8 +21,8 @@ def clean_string(text) -> str:
         return ""
 
     text = str(text)
-    text = ''.join(c for c in text if ord(c) < 0xFFFE) # This removes Unicode non-characters
-    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text) # Gets rid of control characters
+    text = ''.join(c for c in text if ord(c) < 0xFFFE)
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
 
     return text.strip()
 
@@ -75,10 +75,9 @@ def normalize_whitespace(text: str) -> str:
 def expand_abbreviations(text: str) -> str:
     """
     Stage 4.1: Linguistic Normalization
-    Expands common DPWH and COA abbreviations and audits documents to their
-    full, human-readable forms. It standardizes abbreviated terms that appear
-    frequently in DPWH regional report and COA audit documents.
-    :param text: String containing DPWH/COA abbreviations that can be expanded
+    Expands common DPWH abbreviations to their full, human-readable forms.
+    It standardizes abbreviated terms that appear frequently in DPWH regional reports.
+    :param text: String containing DPWH abbreviations that can be expanded
     :return: String with all recognized abbreviations expanded to their full forms.
     """
     abbr = {
@@ -148,7 +147,7 @@ def normalize_full_row(row: str) -> str:
     Normalizes a full table row which handles sparse columns. Splits cells
     by pipe, normalizes each cell that was separated, rejoins the normalized
     separated cells.
-    :param row: A ra table row string from PDF extraction
+    :param row: A raw table row string from PDF extraction
     :return: Normalized row string with cleaned cells and standardized pipe formatting
     """
     if not row.strip():
@@ -211,9 +210,6 @@ def extract_region_from_filename(filename: str) -> str:
     :param filename: The filename of the PDF containing region names
     :return: The region name from the filename of the PDF
     """
-    if 'COA' in filename:
-        return "COA (National)"
-
     match = re.search(r'DPWH-([A-Z0-9]+)-INFRA', filename)
 
     if not match:
@@ -246,8 +242,7 @@ def extract_region_from_filename(filename: str) -> str:
 
 def generate_parallel_sentences_excel():
     """
-    Process all extracted .txt files and generates a
-    parallel_sentences.xlsx
+    Process all extracted .txt files and generates a parallel_sentences.xlsx
     :return: The generated .xlsx file
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -280,31 +275,31 @@ def generate_parallel_sentences_excel():
         print(f"   Generated {len(sentences):,} valid sentences")
         all_sentences.extend(sentences)
 
-        data = []
-        for s in all_sentences:
-            data.append({
-                'region': s['region'],
-                'raw_sentence': s['raw'],
-                'normalized_sentence': s['normalized']
-            })
+    data = []
+    for s in all_sentences:
+        data.append({
+            'region': s['region'],
+            'raw_sentence': s['raw'],
+            'normalized_sentence': s['normalized']
+        })
 
-        if not data:
-            print("\n No valid data to save")
-            return None
+    if not data:
+        print("\n No valid data to save")
+        return None
 
-        df = pd.DataFrame(data)
+    df = pd.DataFrame(data)
 
-        try:
-            df.to_excel(OUTPUT_FILE, index=False, engine='openpyxl')
-            print(f"\n Saved to: {OUTPUT_FILE}")
-            print(f"   Total rows: {len(df):,}")
-        except Exception as e:
-            print(f"\n Error: {e}")
-            csv_file = OUTPUT_DIR / "parallel_sentences.csv"
-            df.to_csv(csv_file, index=False, encoding='utf-8')
-            print(f"   Saved as CSV: {csv_file}")
+    try:
+        df.to_excel(OUTPUT_FILE, index=False, engine='openpyxl')
+        print(f"\n Saved to: {OUTPUT_FILE}")
+        print(f"   Total rows: {len(df):,}")
+    except Exception as e:
+        print(f"\n Error: {e}")
+        csv_file = OUTPUT_DIR / "parallel_sentences.csv"
+        df.to_csv(csv_file, index=False, encoding='utf-8')
+        print(f"   Saved as CSV: {csv_file}")
 
-        return df
+    return df
 
 if __name__ == "__main__":
-        generate_parallel_sentences_excel()
+    generate_parallel_sentences_excel()
