@@ -1,0 +1,5 @@
+record_id,region,source_year,contract_id_gt,contract_cost_gt,contract_date_gt,implementing_office_gt,notes
+GT_001,CAR,2023,23PA0089,12450000.00,"March 15, 2023",Abra District Engineering Office,standard
+GT_002,CAR,2023,23PA0090,8200500.75,"April 3, 2023",Benguet District Engineering Office,standard
+GT_003,NCR,2023,23MM0012,45000000.00,"January 20, 2023",North Manila District Engineering Office,standard
+GT_004,Region III,2023,23AA0034,12340000.00,"August 3, 2023",Bulacan District Engineering Office,cost/date missing in PDF

@@ -3,8 +3,8 @@ import spacy
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-INPUT_PATH = PROJECT_ROOT / "output" / "parallel_sentences.xlsx"
-OUTPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences.xlsx"
+INPUT_PATH = PROJECT_ROOT / "output" / "parallel_sentences_2024.xlsx"
+OUTPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences_2024.xlsx"
 
 # Larger batches amortize spaCy overhead; lower if memory is tight.
 BATCH_SIZE = 512

@@ -3,11 +3,20 @@ import os
 from pathlib import Path
 
 # Path Config
-RAW_PDF_DIR = str(Path(__file__).parent.parent / "data" / "raw")
-EXTRACTED_DIR = str(Path(__file__).parent.parent / "data" / "extracted")
+DATA_DIR = Path(__file__).parent.parent / "data"
+RAW_PDF_DIR_2024 = DATA_DIR / "raw"
+RAW_PDF_DIR_2023 = DATA_DIR / "validation" / "2023"
+EXTRACTED_DIR_2024 = DATA_DIR / "extracted" / "2024"
+EXTRACTED_DIR_2023 = DATA_DIR / "extracted" / "2023"
+
+PDF_FILES_2023 = [
+    "DPWH-CAR-INFRA.pdf",
+    "DPWH-NCR-INFRA.pdf",
+    "DPWH-REGIONIII-INFRA.pdf",
+]
 
 PDF_FILES = [
-    "DPWH-BENGUET-INFRA.pdf",
+    "DPWH-CAR-INFRA.pdf",
     "DPWH-CENTRALOFFICE-INFRA.pdf",
     "DPWH-MIMAROPA-INFRA.pdf",
     "DPWH-NCR-INFRA.pdf",
@@ -44,46 +53,60 @@ def extract_pdf_text(pdf_path):
     return "\n".join(full_text)
 
 
-def save_extracted_text(pdf_name, extracted_text):
+def save_extracted_text(pdf_name, extracted_text, output_dir):
     """
     This function saves extracted text to a .txt file
     :param pdf_name: (str) Original PDF filename that will be converted to .txt
     :param extracted_text: (str) Extracted text content
+    :param output_dir: (Path) Output directory
     """
     initial_name = pdf_name.replace(".pdf", ".txt")
-    output_path = os.path.join(EXTRACTED_DIR, initial_name)
+    output_path = os.path.join(output_dir, initial_name)
     with open(output_path, "w", encoding='utf-8') as f:
         f.write(extracted_text)
     print(f"Saved extracted text to {output_path}")
 
-def main():
-    """
-    This function is the main extraction process for all PDF files
-    """
+
+def process_corpus(corpus_year, raw_dir, extracted_dir, pdf_files=None):
+    if pdf_files is None:
+        pdf_files = PDF_FILES
+
+    print(f"\nProcessing {corpus_year} Corpus")
     print("-" * 50)
-    print("PDF TEXT EXTRACTOR")
-    print("-" * 50)
-    # Tracker for extraction results
     success_count = 0
     fail_count = 0
-    for pdf_file in PDF_FILES:
-        pdf_path = os.path.join(RAW_PDF_DIR, pdf_file)
+
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    for pdf_file in pdf_files:  # <-- uses the passed-in list now
+        pdf_path = os.path.join(raw_dir, pdf_file)
         print(f"\n Processing: {pdf_file}")
-        if not os.path.exists(pdf_path): # Checks if PDF exists
+        if not os.path.exists(pdf_path):
             print(f"Error: File not found at {pdf_path}")
             fail_count += 1
             continue
-        extracted_text = extract_pdf_text(pdf_path) # Extract text
-        save_extracted_text(pdf_file, extracted_text) # Save extracted text
+        extracted_text = extract_pdf_text(pdf_path)
+        save_extracted_text(pdf_file, extracted_text, extracted_dir)
         success_count += 1
 
     print("\n" + "-" * 50)
-    print("EXTRACTION COMPLETE")
+    print(f"{corpus_year} EXTRACTION COMPLETE")
     print("-" * 50)
-    print(f"Successful: {success_count} out of {len(PDF_FILES)}")
-    print(f"Failed: {fail_count} out of {len(PDF_FILES)}")
-    print(f"Output directory: {EXTRACTED_DIR}")
+    print(f"Successful: {success_count} out of {len(pdf_files)}")
+    print(f"Failed: {fail_count} out of {len(pdf_files)}")
+    print(f"Output directory: {extracted_dir}")
     print("-" * 50)
+
+def main():
+    print("-" * 50)
+    print("PDF TEXT EXTRACTOR")
+    print("-" * 50)
+
+    # Process 2024 (Primary Corpus) — all 18 regions
+    process_corpus("2024", RAW_PDF_DIR_2024, EXTRACTED_DIR_2024)
+
+    # Process 2023 (Validation Corpus) — only 3 regions
+    process_corpus("2023", RAW_PDF_DIR_2023, EXTRACTED_DIR_2023, PDF_FILES_2023)
 
 if __name__ == "__main__":
     main()

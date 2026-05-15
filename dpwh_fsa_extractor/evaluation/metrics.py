@@ -1,196 +1,133 @@
 import pandas as pd
-import json
-from datetime import datetime
+import numpy as np
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
-EXTRACTED_PATH = PROJECT_ROOT / "output" / "extracted_fields.xlsx"
-CSV_PATH = PROJECT_ROOT / "data" / "validation" / "dpwh_transparency_data.csv"
+EXTRACTED_PATH = PROJECT_ROOT / "output" / "extracted_fields_2023.xlsx"
+CSV_PATH = PROJECT_ROOT / "data" / "validation" / "ground_truth.csv"
 REPORT_PATH = PROJECT_ROOT / "output" / "validation_report.xlsx"
 
-def parse_fsa_date(date_str):
-    try:
-        return datetime.strptime(date_str.strip(), "%B %d, %Y").date()
-    except ValueError:
-        return None
-
-def parse_csv_date(date_str):
-    if pd.isna(date_str) or not str(date_str).strip():
-        return None
-    try:
-        return datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-def normalize_cost(cost_str):
-    if pd.isna(cost_str) or not str(cost_str).strip():
-        return None
-    try:
-        return float(str(cost_str).replace(',', ''))
-    except ValueError:
-        return None
-
-def normalize_office(office_str):
-    if pd.isna(office_str):
+def normalize_string(s):
+    if pd.isna(s) or s is None:
         return ""
-    s = str(office_str).lower()
-    s = s.replace("district engineering office", "deo")
-    return s.strip()
+    return str(s).strip()
+
+def normalize_cost(s):
+    if pd.isna(s) or s is None:
+        return ""
+    # Remove commas and spaces for numeric comparison, or just string compare
+    # Let's keep it as string without commas and spaces for robust comparison
+    s = str(s).replace(',', '').strip()
+    try:
+        # if it can be a float, format it to 2 decimal places string
+        return f"{float(s):.2f}"
+    except ValueError:
+        return s
 
 def main():
     print("=" * 60)
-    print("Metrics & Validation Report")
+    print("Metrics & Validation Report (2023 Ground Truth)")
     print("=" * 60)
 
     if not EXTRACTED_PATH.exists():
         print(f"Error: {EXTRACTED_PATH} not found. Please run field_extractor.py first.")
         return
     if not CSV_PATH.exists():
-        print(f"Error: {CSV_PATH} not found.")
+        print(f"Error: {CSV_PATH} not found. Please create the ground truth CSV.")
         return
 
     print("Loading data...")
     ext_df = pd.read_excel(EXTRACTED_PATH)
-    
-    # Load CSV in chunks or only relevant columns to save memory
-    csv_df = pd.read_csv(CSV_PATH, usecols=["contractId", "budget", "startDate", "completionDate", "location"], dtype=str)
-    
-    # Create lookup dict for faster matching
-    csv_dict = csv_df.set_index("contractId").to_dict("index")
+    gt_df = pd.read_csv(CSV_PATH)
 
     report_rows = []
     
     metrics = {
-        "contract_id": {"processed": 0, "valid": 0, "rejected": 0, "tp": 0, "fp": 0, "fn": 0},
-        "contract_cost": {"processed": 0, "valid": 0, "rejected": 0, "tp": 0, "fp": 0, "fn": 0},
-        "contract_dates": {"processed": 0, "valid": 0, "rejected": 0, "tp": 0, "fp": 0, "fn": 0},
-        "implementing_office": {"processed": 0, "valid": 0, "rejected": 0, "tp": 0, "fp": 0, "fn": 0},
+        "contract_id": {"tp": 0, "fp": 0, "fn": 0},
+        "contract_cost": {"tp": 0, "fp": 0, "fn": 0},
+        "contract_date": {"tp": 0, "fp": 0, "fn": 0},
+        "implementing_office": {"tp": 0, "fp": 0, "fn": 0},
     }
-    
-    total_rows = len(ext_df)
-    matched_contracts = 0
 
-    for _, row in ext_df.iterrows():
-        # Process general metrics (Validation Coverage, Success Rate, etc.)
-        for field in ["contract_id", "contract_cost", "contract_dates", "implementing_office"]:
-            metrics[field]["processed"] += 1
-            ext_val = row.get(field)
-            if not pd.isna(ext_val) and bool(str(ext_val).strip()):
-                metrics[field]["valid"] += 1
-            else:
-                metrics[field]["rejected"] += 1
+    # Map the FSA extracted column names to our standard fields
+    fsa_col_map = {
+        "contract_id": "contract_id",
+        "contract_cost": "contract_cost",
+        "contract_date": "contract_dates", # note the plural in extracted fields
+        "implementing_office": "implementing_office"
+    }
 
-        c_id = row.get("contract_id")
-        cost = row.get("contract_cost")
-        dates = row.get("contract_dates")
-        office = row.get("implementing_office")
+    matched_records = 0
+    unmatched_records = 0
+
+    for _, gt_row in gt_df.iterrows():
+        gt_region = normalize_string(gt_row.get("region"))
+        gt_id = normalize_string(gt_row.get("contract_id_gt"))
         
-        has_id = not pd.isna(c_id) and bool(str(c_id).strip())
+        if not gt_id:
+            continue
+
+        # Find matching row in extracted data
+        # We match on region and the raw_sentence containing the ground truth contract ID
+        # because the PDF row will contain the contract ID.
+        mask = (ext_df["region"].astype(str).str.strip() == gt_region) & \
+               (ext_df["raw_sentence"].astype(str).str.contains(gt_id, regex=False, na=False))
+        
+        matches = ext_df[mask]
+        
+        if len(matches) == 0:
+            unmatched_records += 1
+            fsa_row = None
+            print(f"Warning: Could not find extracted row for GT Contract ID: {gt_id} in Region: {gt_region}")
+        else:
+            matched_records += 1
+            fsa_row = matches.iloc[0]
 
         report_row = {
-            "contract_id": c_id,
-            "raw_sentence": row.get("raw_sentence"),
-            "extracted_cost": cost,
-            "csv_budget": None,
-            "cost_match": False,
-            "extracted_dates": dates,
-            "csv_start_date": None,
-            "csv_completion_date": None,
-            "date_match": False,
-            "extracted_office": office,
-            "csv_location": None,
-            "office_match": False
+            "record_id": gt_row.get("record_id"),
+            "region": gt_region,
+            "raw_sentence": fsa_row["raw_sentence"] if fsa_row is not None else ""
         }
 
-        # Evaluate TP, FP, FN
-        if has_id:
-            if c_id in csv_dict:
-                metrics["contract_id"]["tp"] += 1
-                matched_contracts += 1
-                csv_data = csv_dict[c_id]
-                
-                # --- Cost Match ---
-                report_row["csv_budget"] = csv_data.get("budget")
-                has_cost = not pd.isna(cost) and bool(str(cost).strip())
-                gt_cost = csv_data.get("budget")
-                has_gt_cost = not pd.isna(gt_cost) and bool(str(gt_cost).strip())
-                
-                match_cost = False
-                if has_cost and has_gt_cost:
-                    ex_cost = normalize_cost(cost)
-                    csv_cost = normalize_cost(gt_cost)
-                    if ex_cost is not None and csv_cost is not None and abs(ex_cost - csv_cost) < 1.0:
-                        match_cost = True
-                        
-                if match_cost:
-                    report_row["cost_match"] = True
-                    metrics["contract_cost"]["tp"] += 1
-                else:
-                    if has_cost: metrics["contract_cost"]["fp"] += 1
-                    if has_gt_cost: metrics["contract_cost"]["fn"] += 1
+        # Evaluate each field
+        for field in ["contract_id", "contract_cost", "contract_date", "implementing_office"]:
+            gt_val = normalize_string(gt_row.get(f"{field}_gt"))
             
-                # --- Date Match ---
-                report_row["csv_start_date"] = csv_data.get("startDate")
-                report_row["csv_completion_date"] = csv_data.get("completionDate")
-                has_dates = not pd.isna(dates) and bool(str(dates).strip())
-                gt_start = csv_data.get("startDate")
-                gt_end = csv_data.get("completionDate")
-                has_gt_dates = (not pd.isna(gt_start) and bool(str(gt_start).strip())) or \
-                               (not pd.isna(gt_end) and bool(str(gt_end).strip()))
+            fsa_col = fsa_col_map[field]
+            fsa_val = normalize_string(fsa_row[fsa_col]) if fsa_row is not None else ""
+            
+            report_row[f"{field}_ground_truth"] = gt_val
+            report_row[f"{field}_extracted"] = fsa_val
+            
+            if not gt_val:
+                # If ground truth is empty, skip evaluation for this field (not in PDF)
+                report_row[f"{field}_match"] = "N/A (No GT)"
+                continue
                 
-                match_date = False
-                if has_dates:
-                    ex_dates = [d.strip() for d in str(dates).split('|') if d.strip()]
-                    csv_start = parse_csv_date(gt_start)
-                    csv_end = parse_csv_date(gt_end)
-                    
-                    for d in ex_dates:
-                        parsed_d = parse_fsa_date(d)
-                        if parsed_d and (parsed_d == csv_start or parsed_d == csv_end):
-                            match_date = True
-                            break
-                            
-                if match_date:
-                    report_row["date_match"] = True
-                    metrics["contract_dates"]["tp"] += 1
-                else:
-                    if has_dates: metrics["contract_dates"]["fp"] += 1
-                    if has_gt_dates: metrics["contract_dates"]["fn"] += 1
-                    
-                # --- Office Match ---
-                report_row["csv_location"] = csv_data.get("location")
-                has_office = not pd.isna(office) and bool(str(office).strip())
-                gt_loc = csv_data.get("location")
-                has_gt_office = False
-                match_office = False
-                
-                if not pd.isna(gt_loc):
-                    try:
-                        loc_dict = json.loads(str(gt_loc))
-                        prov = normalize_office(loc_dict.get("province", ""))
-                        reg = normalize_office(loc_dict.get("region", ""))
-                        if prov or reg:
-                            has_gt_office = True
-                            if has_office:
-                                ex_off = normalize_office(office)
-                                if (ex_off and (ex_off in prov or ex_off in reg or prov in ex_off or reg in ex_off)):
-                                    match_office = True
-                    except json.JSONDecodeError:
-                        pass
-                        
-                if match_office:
-                    report_row["office_match"] = True
-                    metrics["implementing_office"]["tp"] += 1
-                else:
-                    if has_office: metrics["implementing_office"]["fp"] += 1
-                    if has_gt_office: metrics["implementing_office"]["fn"] += 1
-
+            # Normalization for comparison
+            if field == "contract_cost":
+                comp_gt = normalize_cost(gt_val)
+                comp_fsa = normalize_cost(fsa_val)
             else:
-                # Extracted ID not in CSV -> False Positive for ID
-                metrics["contract_id"]["fp"] += 1
-        else:
-            # No ID extracted -> False Negative for ID
-            metrics["contract_id"]["fn"] += 1
+                comp_gt = gt_val.lower()
+                comp_fsa = fsa_val.lower()
+                
+            is_match = (comp_fsa == comp_gt) if comp_fsa else False
+            
+            # For dates, it might extract multiple dates or slightly different formats.
+            # We do a basic substring match if exact match fails for dates and offices.
+            if not is_match and comp_fsa and field in ["contract_date", "implementing_office"]:
+                if comp_gt in comp_fsa or comp_fsa in comp_gt:
+                    is_match = True
+
+            report_row[f"{field}_match"] = is_match
+
+            if is_match:
+                metrics[field]["tp"] += 1
+            elif fsa_val:
+                metrics[field]["fp"] += 1
+            else:
+                metrics[field]["fn"] += 1
 
         report_rows.append(report_row)
 
@@ -199,39 +136,66 @@ def main():
     report_df.to_excel(REPORT_PATH, index=False)
     print(f"Validation report saved to {REPORT_PATH}")
 
+    # --- Aggregate counts for additional metrics ---
+    total_gt_records = len([r for r in report_rows])
+    total_expected_fields = total_gt_records * 4  # 4 fields per record
+
+    # Count fields that had a non-empty extracted value (processed by FSA)
+    fields_successfully_processed = 0
+    fields_with_valid_extraction = 0
+    fields_rejected = 0
+
+    for row in report_rows:
+        for field in ["contract_id", "contract_cost", "contract_date", "implementing_office"]:
+            gt_val = row.get(f"{field}_ground_truth", "")
+            fsa_val = row.get(f"{field}_extracted", "")
+            match_val = row.get(f"{field}_match", "N/A (No GT)")
+
+            if match_val == "N/A (No GT)":
+                continue  # skip fields with no ground truth
+
+            fields_successfully_processed += 1
+            if fsa_val:
+                fields_with_valid_extraction += 1
+            else:
+                fields_rejected += 1
+
+    validation_coverage = (
+                fields_successfully_processed / total_expected_fields * 100) if total_expected_fields > 0 else 0
+    extraction_success_rate = (
+                fields_with_valid_extraction / fields_successfully_processed * 100) if fields_successfully_processed > 0 else 0
+    invalid_detection_rate = (
+                fields_rejected / fields_successfully_processed * 100) if fields_successfully_processed > 0 else 0
+    overall_quality = extraction_success_rate  # same formula per Table 7
+
     print("\n--- Metrics ---")
-    print(f"Total rows processed: {total_rows}")
-    print(f"Contracts matched in CSV: {matched_contracts}")
-    
+    print(f"Total Ground Truth Records:                    {len(gt_df)}")
+    print(f"Records successfully matched with extraction:  {matched_records}")
+    print(f"Records failed to match with extraction:       {unmatched_records}")
+
+    print(f"\n--- Summary Metrics (Table 7) ---")
+    print(f"  Validation Coverage:           {validation_coverage:.2f}%")
+    print(f"  Extraction Success Rate:       {extraction_success_rate:.2f}%")
+    print(f"  Recognized Valid String Count: {fields_with_valid_extraction}")
+    print(f"  Invalid String Detection Rate: {invalid_detection_rate:.2f}%")
+    print(f"  Overall Data Quality Score:    {overall_quality:.2f}%")
+
     for field, data in metrics.items():
-        processed = data["processed"]
-        expected = processed  # Based on Validation Coverage formula
-        valid = data["valid"]
-        rejected = data["rejected"]
         tp = data["tp"]
         fp = data["fp"]
         fn = data["fn"]
-        
-        validation_coverage = (processed / expected) * 100 if expected > 0 else 0
-        extraction_success_rate = (valid / processed) * 100 if processed > 0 else 0
-        
+
         precision = (tp / (tp + fp)) * 100 if (tp + fp) > 0 else 0
         recall = (tp / (tp + fn)) * 100 if (tp + fn) > 0 else 0
         f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        recognized_valid_string_count = valid
-        invalid_string_detection_rate = (rejected / processed) * 100 if processed > 0 else 0
-        overall_data_quality = (valid / processed) * 100 if processed > 0 else 0
-        
+
         print(f"\nField: {field}")
-        print(f"  Validation Coverage:             {validation_coverage:.2f}% ({processed}/{expected})")
-        print(f"  Extraction Success Rate:         {extraction_success_rate:.2f}% ({valid}/{processed})")
-        print(f"  Precision:                       {precision:.2f}% ({tp}/{tp+fp})")
-        print(f"  Recall:                          {recall:.2f}% ({tp}/{tp+fn})")
-        print(f"  F1-Score:                        {f1_score:.2f}%")
-        print(f"  Recognized Valid String Count:   {recognized_valid_string_count}")
-        print(f"  Invalid String Detection Rate:   {invalid_string_detection_rate:.2f}% ({rejected}/{processed})")
-        print(f"  Overall Data Quality Assessment: {overall_data_quality:.2f}% ({valid}/{processed})")
+        print(f"  True Positives (TP):  {tp}")
+        print(f"  False Positives (FP): {fp}")
+        print(f"  False Negatives (FN): {fn}")
+        print(f"  Precision:            {precision:.2f}%")
+        print(f"  Recall:               {recall:.2f}%")
+        print(f"  F1-Score:             {f1_score:.2f}%")
 
 if __name__ == "__main__":
     main()

@@ -11,6 +11,9 @@ from dpwh_fsa_extractor.evaluation import metrics
 def main():
     print("=" * 60)
     print("Themis-FieldExtractorApplication Pipeline")
+    print("Note: Runs pdf_extractor on both 2024 and 2023 PDFs,")
+    print("derives grammars and FSAs from 2024, then applies FSAs to")
+    print("both corpora. 2023 corpus is used for evaluation.")
     print("=" * 60)
     
     try:
@@ -23,19 +26,19 @@ def main():
         preprocessor.generate_parallel_sentences_excel()
         
         # Phase 3: POS Tagger
-        print("\n[3/6] Running POS Tagger...")
+        print("\n[3/6] Running POS Tagger (on 2024 Corpus)...")
         pos_tagger.main()
         
         # Phase 4: N-Fold Builder
-        print("\n[4/6] Running N-Fold Builder...")
+        print("\n[4/6] Running N-Fold Builder (on 2024 Corpus)...")
         nfold_builder.main()
         
         # Phase 5: Field Extractor
-        print("\n[5/6] Running Field Extractor...")
+        print("\n[5/6] Running Field Extractor (on both 2024 and 2023 Corpora)...")
         field_extractor.main()
         
         # Phase 6: Metrics & Evaluation
-        print("\n[6/6] Running Metrics Evaluation...")
+        print("\n[6/6] Running Metrics Evaluation (on 2023 Corpus against Ground Truth)...")
         metrics.main()
         
         print("\n" + "=" * 60)

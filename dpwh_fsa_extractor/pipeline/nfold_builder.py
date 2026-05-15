@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).parent.parent
-POS_TAG_INPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences.xlsx"
-OUTPUT_PATH = PROJECT_ROOT / "output" / "nfold_product.xlsx"
+POS_TAG_INPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences_2024.xlsx"
+OUTPUT_PATH = PROJECT_ROOT / "output" / "nfold_product_2024.xlsx"
 
 FIELD_TYPES = ["contract_id", "contract_cost", "contract_dates", "implementing_office"]
 EXCEL_ROW_LIMIT = 1_048_576 - 1

@@ -6,7 +6,6 @@ from typing import Dict, List
 # Path Config
 EXTRACTED_DIR = Path(__file__).parent.parent / "data" / "extracted"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
-OUTPUT_FILE = OUTPUT_DIR / "parallel_sentences.xlsx"
 
 def clean_string(text) -> str:
     """
@@ -211,7 +210,7 @@ def extract_region_from_filename(filename: str) -> str:
     region_map = {
         'NCR': 'National Capital Region',
         'NIR': 'Negros Island Region',
-        'BENGUET': 'Benguet',
+        'CAR': 'Cordillera Administrative Region',
         'CENTRALOFFICE': 'Central Office',
         'MIMAROPA': 'MIMAROPA',
         'REGIONI': 'Region I - Ilocos Region',
@@ -231,22 +230,28 @@ def extract_region_from_filename(filename: str) -> str:
 
     return region_map.get(region_code, f"Unknown ({region_code})")
 
-def generate_parallel_sentences_excel():
+def process_corpus_txt(corpus_year: str):
     """
-    Process all extracted .txt files and generates a parallel_sentences.xlsx
-    :return: The generated .xlsx file
+    Process extracted .txt files for a specific corpus year and generates a parallel_sentences_{year}.xlsx
     """
+    corpus_extracted_dir = EXTRACTED_DIR / corpus_year
+    output_file = OUTPUT_DIR / f"parallel_sentences_{corpus_year}.xlsx"
+    
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     all_sentences = []
-    txt_files = list(EXTRACTED_DIR.glob("*.txt"))
+    if not corpus_extracted_dir.exists():
+        print(f"Directory {corpus_extracted_dir} does not exist.")
+        return None
+        
+    txt_files = list(corpus_extracted_dir.glob("*.txt"))
 
     if not txt_files:
-        print(f"Error: No .txt files found in {EXTRACTED_DIR}")
+        print(f"Error: No .txt files found in {corpus_extracted_dir}")
         return None
 
     print("-" * 50)
-    print("PREPROCESSING & EXCEL GENERATION")
+    print(f"PREPROCESSING & EXCEL GENERATION - {corpus_year}")
     print("-" * 50)
 
     for txt_path in txt_files:
@@ -275,22 +280,30 @@ def generate_parallel_sentences_excel():
         })
 
     if not data:
-        print("\n No valid data to save")
+        print(f"\n No valid data to save for {corpus_year}")
         return None
 
     df = pd.DataFrame(data)
 
     try:
-        df.to_excel(OUTPUT_FILE, index=False, engine='openpyxl')
-        print(f"\n Saved to: {OUTPUT_FILE}")
+        df.to_excel(output_file, index=False, engine='openpyxl')
+        print(f"\n Saved to: {output_file}")
         print(f"   Total rows: {len(df):,}")
     except Exception as e:
         print(f"\n Error: {e}")
-        csv_file = OUTPUT_DIR / "parallel_sentences.csv"
+        csv_file = OUTPUT_DIR / f"parallel_sentences_{corpus_year}.csv"
         df.to_csv(csv_file, index=False, encoding='utf-8')
         print(f"   Saved as CSV: {csv_file}")
 
     return df
+
+def generate_parallel_sentences_excel():
+    """
+    Process both 2024 and 2023 corpora.
+    """
+    df_2024 = process_corpus_txt("2024")
+    df_2023 = process_corpus_txt("2023")
+    return df_2024, df_2023
 
 if __name__ == "__main__":
     generate_parallel_sentences_excel()

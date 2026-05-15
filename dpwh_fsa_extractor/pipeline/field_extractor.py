@@ -8,8 +8,7 @@ from dpwh_fsa_extractor.fsa import (
 )
 
 PROJECT_ROOT = Path(__file__).parent.parent
-INPUT_PATH = PROJECT_ROOT / "output" / "parallel_sentences.xlsx"
-OUTPUT_PATH = PROJECT_ROOT / "output" / "extracted_fields.xlsx"
+OUTPUT_DIR = PROJECT_ROOT / "output"
 
 def extract_fields_from_sentence(sentence_dict: dict) -> dict:
     """
@@ -54,17 +53,18 @@ def extract_fields_from_sentence(sentence_dict: dict) -> dict:
     
     return extracted
 
-def main():
-    print("=" * 60)
-    print("Field Extractor - Running FSAs")
-    print("=" * 60)
+def process_corpus_fields(corpus_year: str):
+    input_path = OUTPUT_DIR / f"parallel_sentences_{corpus_year}.xlsx"
+    output_path = OUTPUT_DIR / f"extracted_fields_{corpus_year}.xlsx"
     
-    if not INPUT_PATH.exists():
-        print(f"Error: Input file not found at {INPUT_PATH}")
+    print(f"\nProcessing {corpus_year} corpus...")
+    
+    if not input_path.exists():
+        print(f"Error: Input file not found at {input_path}")
         return
         
-    print(f"Reading: {INPUT_PATH}")
-    df = pd.read_excel(INPUT_PATH)
+    print(f"Reading: {input_path}")
+    df = pd.read_excel(input_path)
     
     results = []
     for _, row in df.iterrows():
@@ -77,11 +77,19 @@ def main():
         results.append(extracted)
         
     out_df = pd.DataFrame(results)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    out_df.to_excel(OUTPUT_PATH, index=False)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    out_df.to_excel(output_path, index=False)
     
-    print(f"Extracted fields saved to: {OUTPUT_PATH}")
+    print(f"Extracted fields saved to: {output_path}")
     print(f"Total rows processed: {len(out_df)}")
+
+def main():
+    print("=" * 60)
+    print("Field Extractor - Running FSAs")
+    print("=" * 60)
+    
+    process_corpus_fields("2024")
+    process_corpus_fields("2023")
 
 if __name__ == "__main__":
     main()
