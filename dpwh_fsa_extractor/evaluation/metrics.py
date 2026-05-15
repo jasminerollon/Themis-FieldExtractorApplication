@@ -55,9 +55,6 @@ def main():
     # Load CSV in chunks or only relevant columns to save memory
     csv_df = pd.read_csv(CSV_PATH, usecols=["contractId", "budget", "startDate", "completionDate", "location"], dtype=str)
     
-    # Drop duplicates on contractId so the index is unique for to_dict("index")
-    csv_df = csv_df.drop_duplicates(subset=["contractId"])
-    
     # Create lookup dict for faster matching
     csv_dict = csv_df.set_index("contractId").to_dict("index")
 
@@ -84,23 +81,14 @@ def main():
                 metrics[field]["rejected"] += 1
 
         c_id = row.get("contract_id")
-        
-        # Clean the contract ID to ensure robust matching against the CSV
-        clean_c_id = None
-        if not pd.isna(c_id):
-            clean_c_id = str(c_id).strip()
-            # If the ID was extracted cleanly, use it; otherwise fall back
-            if not clean_c_id:
-                clean_c_id = None
-                
         cost = row.get("contract_cost")
         dates = row.get("contract_dates")
         office = row.get("implementing_office")
         
-        has_id = clean_c_id is not None
+        has_id = not pd.isna(c_id) and bool(str(c_id).strip())
 
         report_row = {
-            "contract_id": clean_c_id,
+            "contract_id": c_id,
             "raw_sentence": row.get("raw_sentence"),
             "extracted_cost": cost,
             "csv_budget": None,
@@ -116,11 +104,10 @@ def main():
 
         # Evaluate TP, FP, FN
         if has_id:
-            # We matched the contract ID with the CSV
-            if clean_c_id in csv_dict:
+            if c_id in csv_dict:
                 metrics["contract_id"]["tp"] += 1
                 matched_contracts += 1
-                csv_data = csv_dict[clean_c_id]
+                csv_data = csv_dict[c_id]
                 
                 # --- Cost Match ---
                 report_row["csv_budget"] = csv_data.get("budget")
@@ -228,12 +215,9 @@ def main():
         validation_coverage = (processed / expected) * 100 if expected > 0 else 0
         extraction_success_rate = (valid / processed) * 100 if processed > 0 else 0
         
-        precision_str = f"{(tp / (tp + fp)) * 100:.2f}%" if (tp + fp) > 0 else "N/A (No positive predictions)"
-        recall_str = f"{(tp / (tp + fn)) * 100:.2f}%" if (tp + fn) > 0 else "N/A (No ground truth targets)"
-        
-        precision_val = (tp / (tp + fp)) if (tp + fp) > 0 else 0
-        recall_val = (tp / (tp + fn)) if (tp + fn) > 0 else 0
-        f1_score_str = f"{(2 * precision_val * recall_val) / (precision_val + recall_val) * 100:.2f}%" if (precision_val + recall_val) > 0 else "N/A"
+        precision = (tp / (tp + fp)) * 100 if (tp + fp) > 0 else 0
+        recall = (tp / (tp + fn)) * 100 if (tp + fn) > 0 else 0
+        f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         
         recognized_valid_string_count = valid
         invalid_string_detection_rate = (rejected / processed) * 100 if processed > 0 else 0
@@ -242,9 +226,9 @@ def main():
         print(f"\nField: {field}")
         print(f"  Validation Coverage:             {validation_coverage:.2f}% ({processed}/{expected})")
         print(f"  Extraction Success Rate:         {extraction_success_rate:.2f}% ({valid}/{processed})")
-        print(f"  Precision:                       {precision_str} ({tp}/{tp+fp})")
-        print(f"  Recall:                          {recall_str} ({tp}/{tp+fn})")
-        print(f"  F1-Score:                        {f1_score_str}")
+        print(f"  Precision:                       {precision:.2f}% ({tp}/{tp+fp})")
+        print(f"  Recall:                          {recall:.2f}% ({tp}/{tp+fn})")
+        print(f"  F1-Score:                        {f1_score:.2f}%")
         print(f"  Recognized Valid String Count:   {recognized_valid_string_count}")
         print(f"  Invalid String Detection Rate:   {invalid_string_detection_rate:.2f}% ({rejected}/{processed})")
         print(f"  Overall Data Quality Assessment: {overall_data_quality:.2f}% ({valid}/{processed})")
