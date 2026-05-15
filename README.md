@@ -30,14 +30,12 @@ The pipeline runs in phases:
 
 ```text
 PDFs (data/raw)
-    → pdf_extractor.py      → plain text per region (data/extracted)
-    → preprocessor.py       → parallel_sentences.xlsx
+    → pdf_extractor.py        → plain text per region (data/extracted)
+    → preprocessor.py         → parallel_sentences.xlsx
     → pos_tagger.py           → pos_tag_sequences.xlsx
     → nfold_builder.py        → nfold_product.xlsx
-    → field_extractor.py*     → extracted_fields.xlsx
-    → validation / metrics*   → validation_report.xlsx, evaluation metrics
-
-* Planned modules — implement separately.
+    → field_extractor.py      → extracted_fields.xlsx
+    → metrics.py              → validation_report.xlsx, console evaluation metrics
 ```
 
 Each target field has a dedicated DFA in `dpwh_fsa_extractor/fsa/`. Formal grammar constants live in `dpwh_fsa_extractor/grammars/grammar_definitions.py` and mirror the project paper.
@@ -103,6 +101,21 @@ py -m spacy download en_core_web_sm
 
 ## Running the pipeline
 
+You can execute the entire pipeline using the main script, or run individual phases sequentially.
+
+### Option A: Run the Complete Pipeline
+
+To run all phases (extraction, preprocessing, POS tagging, N-fold building, field extraction, and evaluation metrics) in sequence:
+
+```powershell
+py main.py
+```
+*(Or `python main.py` depending on your environment)*
+
+This master runner will handle all outputs from `data/raw` to the final `output/validation_report.xlsx` and display the comprehensive evaluation metrics in your console.
+
+### Option B: Run Individual Phases
+
 Run each stage from the project root using the `py` launcher:
 
 ### 1. Extract text from PDFs
@@ -131,7 +144,7 @@ py -m dpwh_fsa_extractor.pipeline.pos_tagger
 
 Output: `dpwh_fsa_extractor/output/pos_tag_sequences.xlsx`
 
-Columns include `raw_tokens`, `raw_pos_tags`, `normalized_tokens`, `normalized_pos_tags` (UD tagset via `token.tag_`). Uses batched `nlp.pipe()` with parser/NER disabled for speed — re-run this step before `nfold_builder.py` after pulling updates.
+Columns include `raw_tokens`, `raw_pos_tags`, `normalized_tokens`, `normalized_pos_tags` (UD tagset via `token.tag_`). Uses batched `nlp.pipe()` with parser/NER disabled for speed.
 
 ### 4. N-fold product set (Deliverable 3)
 
@@ -142,6 +155,24 @@ py -m dpwh_fsa_extractor.pipeline.nfold_builder
 Output: `dpwh_fsa_extractor/output/nfold_product.xlsx` (one sheet per field type)
 
 Columns: `field_type`, `w_source`, `pos_tag`, `w_target`
+
+### 5. Field Extraction (FSA Execution)
+
+```powershell
+py -m dpwh_fsa_extractor.pipeline.field_extractor
+```
+
+Output: `dpwh_fsa_extractor/output/extracted_fields.xlsx`
+
+Applies the formal grammar FSAs to extract the specific fields from the text.
+
+### 6. Validation and Metrics Evaluation
+
+```powershell
+py -m dpwh_fsa_extractor.evaluation.metrics
+```
+
+Output: `dpwh_fsa_extractor/output/validation_report.xlsx` and evaluation metrics printed to the console (Validation Coverage, Success Rate, Precision, Recall, F1-Score, etc.).
 
 ### Testing FSAs directly
 

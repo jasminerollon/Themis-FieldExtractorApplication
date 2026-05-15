@@ -1,2 +1,50 @@
-# Calls all pipeline modules in sequence
-# Assigned to Field Extraction & Validation Engineer
+import sys
+from dpwh_fsa_extractor.pipeline import (
+    pdf_extractor,
+    preprocessor,
+    pos_tagger,
+    nfold_builder,
+    field_extractor
+)
+from dpwh_fsa_extractor.evaluation import metrics
+
+def main():
+    print("=" * 60)
+    print("Themis-FieldExtractorApplication Pipeline")
+    print("=" * 60)
+    
+    try:
+        # Phase 1: PDF Extraction
+        print("\n[1/6] Running PDF Extractor...")
+        pdf_extractor.main()
+        
+        # Phase 2: Preprocessor
+        print("\n[2/6] Running Preprocessor...")
+        preprocessor.generate_parallel_sentences_excel()
+        
+        # Phase 3: POS Tagger
+        print("\n[3/6] Running POS Tagger...")
+        pos_tagger.main()
+        
+        # Phase 4: N-Fold Builder
+        print("\n[4/6] Running N-Fold Builder...")
+        nfold_builder.main()
+        
+        # Phase 5: Field Extractor
+        print("\n[5/6] Running Field Extractor...")
+        field_extractor.main()
+        
+        # Phase 6: Metrics & Evaluation
+        print("\n[6/6] Running Metrics Evaluation...")
+        metrics.main()
+        
+        print("\n" + "=" * 60)
+        print("Pipeline execution completed successfully!")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"\nPipeline failed with error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
