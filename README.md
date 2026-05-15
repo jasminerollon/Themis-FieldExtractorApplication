@@ -85,18 +85,6 @@ py -m spacy download en_core_web_sm
    dpwh_fsa_extractor/data/validation/dpwh_transparency_data.csv
    ```
 
-   Raw PDFs and generated outputs are **not** committed to Git (see `.gitignore`). Teammates regenerate them locally with the pipeline scripts.
-
-### What to commit vs ignore
-
-| Path | Commit? |
-|------|---------|
-| Source code (`*.py`), `requirements.txt`, `README.md` | Yes |
-| `dpwh_fsa_extractor/data/validation/*.csv` (small reference set) | Yes, if team agrees |
-| `data/raw/*.pdf`, `data/extracted/`, `output/*.xlsx` | **No** — large, reproducible |
-| `.idea/*.iml`, `inspectionProfiles/profiles_settings.xml` | Optional — safe to share team code style |
-| `.idea/workspace.xml`, `shelf/`, local data sources | **No** — machine-specific |
-
 ---
 
 ## Running the pipeline
@@ -226,7 +214,5 @@ Implementing-office G4 accepts:
 - Abbreviated DEO — `Cotabato 1st DEO`, `Abra DEO`
 - Numbered regions — `Region VII`
 - Special regions — `NCR`, `CAR`, `NIR`
-
-Contract costs must retain comma grouping after preprocessing so G2 can validate normalized corpus rows.
 
 ---
