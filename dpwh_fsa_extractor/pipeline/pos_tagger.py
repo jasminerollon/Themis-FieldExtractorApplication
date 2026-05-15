@@ -2,28 +2,50 @@ import pandas as pd
 import spacy
 from pathlib import Path
 
-# Path Config
 PROJECT_ROOT = Path(__file__).parent.parent
 INPUT_PATH = PROJECT_ROOT / "output" / "parallel_sentences.xlsx"
 OUTPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences.xlsx"
 
+# Larger batches amortize spaCy overhead; lower if memory is tight.
+BATCH_SIZE = 512
+
+
 def load_spacy_model():
+    """Tagger-only pipeline: skip parser/NER/lemmatizer for much faster tagging."""
     try:
-        nlp = spacy.load("en_core_web_sm")
+        nlp = spacy.load(
+            "en_core_web_sm",
+            disable=["parser", "ner", "attribute_ruler", "lemmatizer"],
+        )
     except OSError:
         print("Downloading spaCy model...")
         spacy.cli.download("en_core_web_sm")
-        nlp = spacy.load("en_core_web_sm")
+        nlp = spacy.load(
+            "en_core_web_sm",
+            disable=["parser", "ner", "attribute_ruler", "lemmatizer"],
+        )
     return nlp
 
 
-def get_pos_tags(sentence, nlp):
-    if not sentence or not isinstance(sentence, str):
+def _prepare_text(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
+    return str(value).strip()
 
-    doc = nlp(sentence.strip())
-    tags = [token.pos_ for token in doc if not token.is_space]
-    return " ".join(tags)
+
+def tag_column(texts: list[str], nlp) -> tuple[list[str], list[str]]:
+    """Batch-tag sentences; returns parallel token, tag, and token columns."""
+    token_cols: list[str] = []
+    tag_cols: list[str] = []
+
+    prepared = [_prepare_text(t) for t in texts]
+    for doc in nlp.pipe(prepared, batch_size=BATCH_SIZE):
+        tokens = [t.text for t in doc if not t.is_space]
+        tags = [t.tag_ for t in doc if not t.is_space]
+        token_cols.append(" ".join(tokens))
+        tag_cols.append(" ".join(tags))
+
+    return token_cols, tag_cols
 
 
 def main():
@@ -36,34 +58,33 @@ def main():
 
     print(f"\nReading: {INPUT_PATH}")
     df = pd.read_excel(INPUT_PATH)
-    print(f"Loaded {len(df)} sentence pairs")
+    print(f"Loaded {len(df):,} sentence pairs")
 
-    raw_pos_tags = []
-    normalized_pos_tags = []
+    raw_texts = df["raw_sentence"].tolist()
+    norm_texts = df["normalized_sentence"].tolist()
 
-    for idx, row in df.iterrows():
-        raw_sentence = row.get("raw_sentence", "")
-        normalized_sentence = row.get("normalized_sentence", "")
+    print(f"Tagging raw sentences (batch_size={BATCH_SIZE})...")
+    raw_tokens, raw_pos_tags = tag_column(raw_texts, nlp)
 
-        raw_pos_tags.append(get_pos_tags(raw_sentence, nlp))
-        normalized_pos_tags.append(get_pos_tags(normalized_sentence, nlp))
-
-        if (idx + 1) % 100 == 0:
-            print(f"Processed {idx + 1}/{len(df)} sentences")
+    print(f"Tagging normalized sentences (batch_size={BATCH_SIZE})...")
+    norm_tokens, norm_pos_tags = tag_column(norm_texts, nlp)
 
     output_df = pd.DataFrame({
         "region": df["region"],
         "raw_sentence": df["raw_sentence"],
+        "raw_tokens": raw_tokens,
         "raw_pos_tags": raw_pos_tags,
         "normalized_sentence": df["normalized_sentence"],
-        "normalized_pos_tags": normalized_pos_tags
+        "normalized_tokens": norm_tokens,
+        "normalized_pos_tags": norm_pos_tags,
     })
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     output_df.to_excel(OUTPUT_PATH, index=False)
 
     print(f"\nSaved to: {OUTPUT_PATH}")
-    print(f"Total sentences: {len(output_df)}")
+    print(f"Total sentences: {len(output_df):,}")
+
 
 if __name__ == "__main__":
     main()

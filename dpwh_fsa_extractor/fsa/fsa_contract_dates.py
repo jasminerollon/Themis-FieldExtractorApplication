@@ -6,7 +6,7 @@ ALPHABET = {'m', 's', 'd', 'c', 'y'}
 
 INITIAL_STATE = 'q1'
 
-ACCEPTING_STATE= 'q7'
+ACCEPTING_STATES = {'q7'}
 
 VALID_MONTHS = {
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -112,5 +112,5 @@ def run_fsa(token_string: str) -> dict:
         next_state, _ = transition
         current_state = next_state
 
-    matched = current_state in ACCEPTING_STATE
+    matched = current_state in ACCEPTING_STATES
     return {"matched": matched, "value": token_string}

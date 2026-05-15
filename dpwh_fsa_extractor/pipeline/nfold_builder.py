@@ -1,93 +1,74 @@
-import pandas as pd
-import spacy
 import re
-from pathlib import Path
 from collections import defaultdict
+from itertools import product
+from pathlib import Path
 
-# Path Config
+import pandas as pd
+
 PROJECT_ROOT = Path(__file__).parent.parent
 POS_TAG_INPUT_PATH = PROJECT_ROOT / "output" / "pos_tag_sequences.xlsx"
 OUTPUT_PATH = PROJECT_ROOT / "output" / "nfold_product.xlsx"
 
 FIELD_TYPES = ["contract_id", "contract_cost", "contract_dates", "implementing_office"]
+EXCEL_ROW_LIMIT = 1_048_576 - 1
 
-def load_spacy_model():
-    try:
-        nlp = spacy.load("en_core_web_sm")
-    except OSError:
-        print("Downloading spaCy model...")
-        spacy.cli.download("en_core_web_sm")
-        nlp = spacy.load("en_core_web_sm")
-    return nlp
+# Pre-compiled patterns (classify once per row)
+_RE_CONTRACT_ID = re.compile(r"\b\d{2}[A-Za-z]{1,2}\d{4,5}\b", re.IGNORECASE)
+_RE_COST = re.compile(r"\b\d{1,3}(?:,\d{3})*\.\d{2}\b")
+_MONTHS = (
+    r"(?:January|February|March|April|May|June|July|August|"
+    r"September|October|November|December)"
+)
+_RE_DATE = re.compile(rf"\b{_MONTHS}\s+\d{{1,2}},\s+\d{{4}}\b")
+_RE_OFFICE = re.compile(
+    r"District Engineering Office|\bDEO\b|"
+    r"Region\s+(?:[IVXLCDM]+|\d+|NCR|CAR|NIR|BARMM)",
+    re.IGNORECASE,
+)
 
 
-def safe_str(value):
-    if pd.isna(value) or value is None:
+def safe_str(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
         return ""
     return str(value)
 
 
-def classify_field_type(raw_sentence, normalized_sentence):
-    raw_sentence = safe_str(raw_sentence)
-    normalized_sentence = safe_str(normalized_sentence)
-
-    if not raw_sentence or not normalized_sentence:
+def classify_field_type(raw_sentence: str) -> str:
+    if not raw_sentence:
         return "other"
-
-    contract_id_pattern = r'\b\d{2}[A-Za-z]{1,2}\d{4,5}\b'
-
-    cost_pattern = r'\b\d{1,3}(?:,\d{3})*\.\d{2}\b'
-
-    months = r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
-    date_pattern = rf'\b{months}\s+\d{{1,2}},\s+\d{{4}}\b'
-
-    office_patterns = [
-        r'District Engineering Office',
-        r'\bDEO\b',
-        r'Region\s+(?:[IVXLCDM]+|\d+|NCR|CAR|NIR|BARMM)'
-    ]
-
-    if re.search(contract_id_pattern, raw_sentence, re.IGNORECASE):
+    if _RE_CONTRACT_ID.search(raw_sentence):
         return "contract_id"
-    elif re.search(cost_pattern, raw_sentence):
+    if _RE_COST.search(raw_sentence):
         return "contract_cost"
-    elif re.search(date_pattern, raw_sentence):
+    if _RE_DATE.search(raw_sentence):
         return "contract_dates"
-    elif any(re.search(p, raw_sentence, re.IGNORECASE) for p in office_patterns):
+    if _RE_OFFICE.search(raw_sentence):
         return "implementing_office"
-    else:
-        return "other"
+    return "other"
 
 
-def tokenize_with_pos(sentence, pos_tags_str, nlp):
-    sentence = safe_str(sentence)
-    pos_tags_str = safe_str(pos_tags_str)
-
-    if not sentence or not pos_tags_str:
+def pairs_from_columns(tokens_str: str, tags_str: str) -> list[tuple[str, str]]:
+    """Build (word, pos_tag) pairs from precomputed token/tag columns (no spaCy)."""
+    tokens = safe_str(tokens_str).split()
+    tags = safe_str(tags_str).split()
+    if not tokens or not tags:
         return []
-
-    doc = nlp(sentence.strip())
-    pos_tags = pos_tags_str.split()
-
-    aligned = []
-    token_idx = 0
-    for token in doc:
-        if not token.is_space:
-            if token_idx < len(pos_tags):
-                aligned.append((token.text, pos_tags[token_idx]))
-            token_idx += 1
-
-    return aligned
+    # spaCy token count should match tag count; use the shorter span if not.
+    n = min(len(tokens), len(tags))
+    return list(zip(tokens[:n], tags[:n]))
 
 
-def build_cartesian_product(source_pairs, target_pairs):
-    product = []
-
-    for ws, pos_tag in source_pairs:
-        for wt, _ in target_pairs:
-            product.append((ws, pos_tag, wt))
-
-    return product
+def triples_for_row(
+    source_pairs: list[tuple[str, str]],
+    target_pairs: list[tuple[str, str]],
+) -> list[tuple[str, str, str]]:
+    """Ws × T × Wt using itertools.product (faster than nested Python loops)."""
+    target_words = [wt for wt, _ in target_pairs]
+    return [
+        (ws, pos_tag, wt)
+        for ws, pos_tag in source_pairs
+        for wt in target_words
+    ]
 
 
 def main():
@@ -100,85 +81,94 @@ def main():
         print("Please run pos_tagger.py first.")
         return
 
-    nlp = load_spacy_model()
-
     print(f"\nReading: {POS_TAG_INPUT_PATH}")
     df = pd.read_excel(POS_TAG_INPUT_PATH)
-    print(f"Loaded {len(df)} sentence pairs")
-
     df = df.fillna("")
+    print(f"Loaded {len(df):,} sentence pairs")
 
-    all_triples = defaultdict(list)
+    has_token_cols = "raw_tokens" in df.columns and "normalized_tokens" in df.columns
+    if not has_token_cols:
+        print(
+            "Warning: raw_tokens / normalized_tokens columns missing.\n"
+            "Re-run pos_tagger.py for best performance (avoids slow re-tokenization)."
+        )
 
-    for idx, row in df.iterrows():
-        raw_sentence = row.get("raw_sentence", "")
-        raw_pos_tags = row.get("raw_pos_tags", "")
-        normalized_sentence = row.get("normalized_sentence", "")
-        normalized_pos_tags = row.get("normalized_pos_tags", "")
+    # Vectorized field classification before the hot loop
+    raw_sentences = df["raw_sentence"].map(safe_str)
+    df["field_type"] = raw_sentences.map(classify_field_type)
+    candidate = df[df["field_type"].isin(FIELD_TYPES)]
+    print(f"Rows matching a target field type: {len(candidate):,} / {len(df):,}")
 
-        if not raw_sentence or not normalized_sentence:
-            continue
+    # field_type -> set of (w_source, pos_tag, w_target) for dedup during accumulation
+    triple_sets: dict[str, set[tuple[str, str, str]]] = defaultdict(set)
+    processed = 0
 
-        field_type = classify_field_type(raw_sentence, normalized_sentence)
+    for row in candidate.itertuples(index=False):
+        field_type = row.field_type
 
-        if field_type not in FIELD_TYPES:
-            continue
-
-        source_pairs = tokenize_with_pos(raw_sentence, raw_pos_tags, nlp)
-        target_pairs = tokenize_with_pos(normalized_sentence, normalized_pos_tags, nlp)
+        source_pairs = pairs_from_columns(
+            row.raw_tokens if has_token_cols else "",
+            row.raw_pos_tags,
+        )
+        target_pairs = pairs_from_columns(
+            row.normalized_tokens if has_token_cols else "",
+            row.normalized_pos_tags,
+        )
 
         if not source_pairs or not target_pairs:
             continue
 
-        triples = build_cartesian_product(source_pairs, target_pairs)
+        for triple in triples_for_row(source_pairs, target_pairs):
+            triple_sets[field_type].add(triple)
 
-        for ws, pos_tag, wt in triples:
-            all_triples[field_type].append({
-                "field_type": field_type,
-                "w_source": ws,
-                "pos_tag": pos_tag,
-                "w_target": wt
-            })
-
-        if (idx + 1) % 50 == 0:
-            print(f"Processed {idx + 1}/{len(df)} sentences")
+        processed += 1
+        if processed % 500 == 0:
+            print(f"  Processed {processed:,} field rows...")
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-
     total_written = 0
-    EXCEL_ROW_LIMIT = 1_048_576 - 1
 
     with pd.ExcelWriter(OUTPUT_PATH, engine="openpyxl") as writer:
         for field_type in FIELD_TYPES:
-            records = all_triples.get(field_type, [])
-            if not records:
-                sheet_df = pd.DataFrame(columns=["field_type", "w_source", "pos_tag", "w_target"])
-                sheet_df.to_excel(writer, sheet_name=field_type[:31], index=False)
+            triples = triple_sets.get(field_type, set())
+            if not triples:
+                pd.DataFrame(
+                    columns=["field_type", "w_source", "pos_tag", "w_target"]
+                ).to_excel(writer, sheet_name=field_type[:31], index=False)
                 continue
 
-            sheet_df = pd.DataFrame(records, columns=["field_type", "w_source", "pos_tag", "w_target"])
+            sheet_df = pd.DataFrame(
+                [
+                    {
+                        "field_type": field_type,
+                        "w_source": ws,
+                        "pos_tag": pos_tag,
+                        "w_target": wt,
+                    }
+                    for ws, pos_tag, wt in triples
+                ],
+                columns=["field_type", "w_source", "pos_tag", "w_target"],
+            )
 
-            before = len(sheet_df)
-            sheet_df = sheet_df.drop_duplicates()
-            after = len(sheet_df)
-            print(f"  {field_type}: {before} → {after} triples after deduplication")
+            print(f"  {field_type}: {len(sheet_df):,} unique triples")
 
             if len(sheet_df) > EXCEL_ROW_LIMIT:
-                print(f"  WARNING: {field_type} still has {len(sheet_df)} rows after dedup. "
-                      f"Truncating to {EXCEL_ROW_LIMIT}. Consider saving as CSV instead.")
+                print(
+                    f"  WARNING: truncating {field_type} to {EXCEL_ROW_LIMIT:,} rows. "
+                    "Consider exporting large sheets as CSV."
+                )
                 sheet_df = sheet_df.iloc[:EXCEL_ROW_LIMIT]
 
             sheet_df.to_excel(writer, sheet_name=field_type[:31], index=False)
             total_written += len(sheet_df)
 
     print(f"\nSaved to: {OUTPUT_PATH}")
-    print(f"Total triples written: {total_written}")
+    print(f"Total triples written: {total_written:,}")
 
     print("\nSummary by field type:")
     for field_type in FIELD_TYPES:
-        records = all_triples.get(field_type, [])
-        count = len(pd.DataFrame(records).drop_duplicates()) if records else 0
-        print(f"  {field_type}: {count} unique triples")
+        print(f"  {field_type}: {len(triple_sets.get(field_type, set())):,} unique triples")
+
 
 if __name__ == "__main__":
     main()

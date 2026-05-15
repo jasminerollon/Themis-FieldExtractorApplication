@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Generated pipeline data (reproducible from PDFs + scripts)
+dpwh_fsa_extractor/data/raw/*.pdf
+dpwh_fsa_extractor/data/extracted/
+dpwh_fsa_extractor/output/
+
+# Keep folder structure
+!dpwh_fsa_extractor/data/raw/.gitkeep
+!dpwh_fsa_extractor/data/extracted/.gitkeep
+!dpwh_fsa_extractor/output/.gitkeep
+
+# PyCharm — share project settings
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/shelf/
+.idea/**/httpRequests/
+.idea/**/dataSources/
+.idea/**/dataSources.local.xml
+.idea/**/queries/
+
+# OS
+.DS_Store
+Thumbs.db

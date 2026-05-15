@@ -56,14 +56,23 @@ def _classify(char: str) -> str:
         return 'd'
     return ''
 
+def _strip_currency_prefix(token_string: str) -> str:
+    """Remove peso symbols and currency codes; G2 expects bare comma-formatted amounts."""
+    s = token_string.strip()
+    for prefix in ("\u20b1", "₱", "PHP", "PhP", "php"):
+        if s.startswith(prefix):
+            s = s[len(prefix):].lstrip()
+    return s
+
+
 def run_fsa(token_string: str) -> dict:
-    token_string = token_string.strip()
+    token_string = _strip_currency_prefix(token_string)
     current_state = INITIAL_STATE
 
     for char in token_string:
         symbol = _classify(char)
 
-        if symbol is None:
+        if not symbol:
             return {"matched": False, "value": token_string}
 
         transition = TRANSITIONS.get((current_state, symbol))

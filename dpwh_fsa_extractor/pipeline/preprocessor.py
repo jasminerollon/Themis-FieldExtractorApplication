@@ -82,7 +82,6 @@ def expand_abbreviations(text: str) -> str:
     """
     abbr = {
         r'\bDPWH\b': 'Department of Public Works and Highways',
-        r'\bCOA\b': 'Commission on Audit',
         r'\bMOOE\b': 'Maintenance and Other Operating Expenses',
         r'\bPS\b': 'Personal Services',
         r'\bCO\b': 'Capital Outlay',
@@ -103,21 +102,13 @@ def expand_abbreviations(text: str) -> str:
 def normalize_currency(text: str) -> str:
     """
     Stage 4.2: Linguistic Normalization
-    Normalizes currency format including the Peso sign to PHP. Comma
-    separator for values reaching a thousand or more are removed
-    :param text: String containing PH currency code, and numerals with comma
-    :return: String with uniform currency code (PHP), commas removed in between numerical values
+    Strips peso symbols and currency prefixes while preserving comma-grouped
+    decimal amounts required by grammar G2 / fsa_contract_cost.
     """
-    text = re.sub(r'₱\s*', 'PHP ', text)
-    text = re.sub(r'PhP\s*', 'PHP ', text, flags=re.IGNORECASE)
-    text = re.sub(r'PHP\s*', 'PHP ', text)
-
-    text = re.sub(r'(\d),(\d{3})', r'\1\2', text)
-    text = re.sub(r'(\d),(\d{3}(?:\.\d+)?)', r'\1\2', text)
-
-    text = re.sub(r'(\d+),(\d{2})(?=\D|$)', r'\1.\2', text)
-
-    return text
+    text = re.sub(r'[₱\u20b1]\s*', '', text)
+    text = re.sub(r'\bPhP\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bPHP\s*', '', text, flags=re.IGNORECASE)
+    return text.strip()
 
 def normalize_cell(cell: str) -> str:
     """

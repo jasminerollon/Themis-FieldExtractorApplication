@@ -60,7 +60,7 @@ def run_fsa(token_string: str) -> dict:
     for char in token_string:
         symbol = _classify(char)
 
-        if symbol is None:
+        if not symbol:
             return {"matched": False, "value": token_string}
 
         transition = TRANSITIONS.get((current_state, symbol))
