@@ -61,14 +61,15 @@ def pairs_from_columns(tokens_str: str, tags_str: str) -> list[tuple[str, str]]:
 def triples_for_row(
     source_pairs: list[tuple[str, str]],
     target_pairs: list[tuple[str, str]],
-) -> list[tuple[str, str, str]]:
-    """Ws × T × Wt using itertools.product (faster than nested Python loops)."""
-    target_words = [wt for wt, _ in target_pairs]
-    return [
-        (ws, pos_tag, wt)
-        for ws, pos_tag in source_pairs
-        for wt in target_words
-    ]
+) -> list[tuple[str, str, str, str]]:
+    """Build (field_type, ws, pos_tag, wt) triples, classifying each w_target individually."""
+    result = []
+    for ws, pos_tag in source_pairs:
+        for wt, _ in target_pairs:
+            # Classify each w_target to determine the correct field_type
+            field_type = classify_field_type(wt)
+            result.append((field_type, ws, pos_tag, wt))
+    return result
 
 
 def main():
@@ -93,19 +94,12 @@ def main():
             "Re-run pos_tagger.py for best performance (avoids slow re-tokenization)."
         )
 
-    # Vectorized field classification before the hot loop
-    raw_sentences = df["raw_sentence"].map(safe_str)
-    df["field_type"] = raw_sentences.map(classify_field_type)
-    candidate = df[df["field_type"].isin(FIELD_TYPES)]
-    print(f"Rows matching a target field type: {len(candidate):,} / {len(df):,}")
-
+    # Process ALL rows and classify triples based on w_target, not raw_sentence
     # field_type -> set of (w_source, pos_tag, w_target) for dedup during accumulation
     triple_sets: dict[str, set[tuple[str, str, str]]] = defaultdict(set)
     processed = 0
 
-    for row in candidate.itertuples(index=False):
-        field_type = row.field_type
-
+    for row in df.itertuples(index=False):
         source_pairs = pairs_from_columns(
             row.raw_tokens if has_token_cols else "",
             row.raw_pos_tags,
@@ -118,12 +112,17 @@ def main():
         if not source_pairs or not target_pairs:
             continue
 
-        for triple in triples_for_row(source_pairs, target_pairs):
-            triple_sets[field_type].add(triple)
+        # Get triples with field_type classification based on w_target
+        triples_with_type = triples_for_row(source_pairs, target_pairs)
+
+        for field_type, ws, pos_tag, wt in triples_with_type:
+            # Only keep triples for recognized field types
+            if field_type in FIELD_TYPES:
+                triple_sets[field_type].add((ws, pos_tag, wt))
 
         processed += 1
         if processed % 500 == 0:
-            print(f"  Processed {processed:,} field rows...")
+            print(f"  Processed {processed:,} rows...")
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     total_written = 0
