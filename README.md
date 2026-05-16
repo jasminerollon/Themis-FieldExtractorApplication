@@ -33,9 +33,10 @@ PDFs (data/raw)
     → pdf_extractor.py        → plain text per region (data/extracted)
     → preprocessor.py         → parallel_sentences.xlsx
     → pos_tagger.py           → pos_tag_sequences.xlsx
-    → nfold_builder.py        → nfold_product.xlsx
+    → nfold_builder.py        → nfold_product.csv
     → field_extractor.py      → extracted_fields.xlsx
-    → metrics.py              → validation_report.xlsx, console evaluation metrics
+    → metrics.py              → console evaluation metrics
+    → validate_extraction.py   → validation_results.xlsx (detailed match analysis)
 ```
 
 Each target field has a dedicated DFA in `dpwh_fsa_extractor/fsa/`. Formal grammar constants live in `dpwh_fsa_extractor/grammars/grammar_definitions.py` and mirror the project paper.
@@ -93,14 +94,14 @@ You can execute the entire pipeline using the main script, or run individual pha
 
 ### Option A: Run the Complete Pipeline
 
-To run all phases (extraction, preprocessing, POS tagging, N-fold building, field extraction, and evaluation metrics) in sequence:
+To run all phases (extraction, preprocessing, POS tagging, N-fold building, field extraction, metrics, and detailed validation) in sequence:
 
 ```powershell
 py main.py
 ```
 *(Or `python main.py` depending on your environment)*
 
-This master runner will handle all outputs from `data/raw` to the final `output/validation_report.xlsx` and display the comprehensive evaluation metrics in your console.
+This master runner will handle all outputs from `data/raw` through extraction, tagging, model training data generation, field extraction, and validation. Final outputs include `validation_results.xlsx` (detailed per-record match analysis) and comprehensive evaluation metrics in your console.
 
 ### Option B: Run Individual Phases
 
@@ -140,9 +141,11 @@ Columns include `raw_tokens`, `raw_pos_tags`, `normalized_tokens`, `normalized_p
 py -m dpwh_fsa_extractor.pipeline.nfold_builder
 ```
 
-Output: `dpwh_fsa_extractor/output/nfold_product.xlsx` (one sheet per field type)
+Output: `dpwh_fsa_extractor/output/nfold_product.csv` (CSV format for large datasets)
 
 Columns: `field_type`, `w_source`, `pos_tag`, `w_target`
+
+Contains ~2.7M training triples for ML models, segregated by field type with POS tags for each source-target word pair.
 
 ### 5. Field Extraction (FSA Execution)
 
@@ -160,7 +163,21 @@ Applies the formal grammar FSAs to extract the specific fields from the text.
 py -m dpwh_fsa_extractor.evaluation.metrics
 ```
 
-Output: `dpwh_fsa_extractor/output/validation_report.xlsx` and evaluation metrics printed to the console (Validation Coverage, Success Rate, Precision, Recall, F1-Score, etc.).
+Output: Console evaluation metrics (FSA test case validation, extraction success rates, per-field accuracy)
+
+Displays both FSA pattern validation (test cases) and real data extraction accuracy against ground truth.
+
+### 7. Detailed Validation Results (Excel Report)
+
+```powershell
+py -m dpwh_fsa_extractor.evaluation.validate_extraction
+```
+
+Output: `dpwh_fsa_extractor/output/validation_results.xlsx`
+
+Columns: `record_id`, `region`, `contract_id_ground_truth`, `contract_id_extracted`, `contract_id_match`, `contract_cost_*`, `contract_date_*`, `implementing_office_*` (expanded for all fields)
+
+Creates a detailed row-by-row comparison of all ground truth records against extracted values. Use this Excel file for paper/report documentation.
 
 ### Testing FSAs directly
 
@@ -174,7 +191,7 @@ py -c "from dpwh_fsa_extractor.fsa.fsa_contract_id import run_fsa; print(run_fsa
 
 ```text
 Themis-FieldExtractorApplication/
-├── main.py                          # Master runner (integration in progress)
+├── main.py                          # Master runner
 ├── requirements.txt
 ├── README.md
 └── dpwh_fsa_extractor/
@@ -189,12 +206,16 @@ Themis-FieldExtractorApplication/
     │   ├── pdf_extractor.py
     │   ├── preprocessor.py
     │   ├── pos_tagger.py
-    │   └── nfold_builder.py
+    │   ├── nfold_builder.py
+    │   └── field_extractor.py
+    ├── evaluation/
+    │   ├── metrics.py               # Console validation metrics
+    │   └── validate_extraction.py   # Excel validation report
     ├── data/
     │   ├── raw/                     # Regional PDFs (local only)
     │   ├── extracted/               # Generated .txt files
-    │   └── validation/              # BetterGovPH CSV
-    └── output/                      # Excel deliverables
+    │   └── validation/              # Ground truth CSV
+    └── output/                      # Excel & CSV deliverables
 ```
 
 ---
