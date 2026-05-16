@@ -131,6 +131,9 @@ def main():
         ext_cost = row.get('contract_cost', "")
         gt_date = row.get('contract_date_gt', "")
         ext_date = row.get('contract_dates', "")
+        # Extract only the FIRST date (effectivity date, not expiry date)
+        if ext_date and '|' in str(ext_date):
+            ext_date = str(ext_date).split('|')[0].strip()
         gt_office = row.get('implementing_office_gt', "")
         ext_office = row.get('implementing_office', "")
 
