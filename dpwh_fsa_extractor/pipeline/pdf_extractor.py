@@ -49,7 +49,9 @@ def extract_pdf_text(pdf_path):
             for table in tables:
                 for row in table:
                     if row and any(cell for cell in row if cell):
-                        full_text.append(" | ".join([str(cell) if cell else "" for cell in row]))
+                    # Clean newlines from cells
+                        cleaned_row = [str(cell).replace('\n', ' ').strip() if cell else "" for cell in row]
+                        full_text.append(" | ".join(cleaned_row))
     return "\n".join(full_text)
 
 
