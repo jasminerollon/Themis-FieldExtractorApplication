@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 import re
+from dpwh_fsa_extractor.fsa import fsa_contract_cost, fsa_contract_dates, fsa_contract_id, fsa_implementing_office
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EXTRACTED_FILE = BASE_DIR / "output" / "extracted_fields_2023.xlsx"
@@ -14,19 +15,24 @@ def normalize(s):
     return " ".join(str(s).replace(',', '').split()).lower()
 
 
+# Test cases: (input_id, input_cost, input_date, input_office, should_be_valid, description)
 TEST_CASES = [
-    ("'12A3456'", "12A3456", "96,480,700.00", "July 11, 2023", "Abra District Engineering Office"),
-    ("'9921234'", "9921234", "87,814,653.82", "April 08, 2024", "North Manila District Engineering Office"),
-    ("'0BB0000'", "0BB0000", "63,351,310.49", "December 15, 2023", "Abra District Engineering Office"),
-    ("'12A34567'", "12A34567", "94,573,295.00", "March 09, 2023", "North Manila District Engineering Office"),
-    ("'12AB345'", "12AB345", "47,875,326.90", "March 28, 2023", "North Manila District Engineering Office"),
+    # Valid cases
+    ("12A3456", "96,480,700.00", "July 11, 2023", "Abra District Engineering Office", True, "Valid: standard format"),
+    ("9921234", "87,814,653.82", "April 08, 2024", "North Manila District Engineering Office", True, "Valid: different values"),
+    ("0BB0000", "63,351,310.49", "December 15, 2023", "Abra District Engineering Office", True, "Valid: zeros in ID"),
+    ("12A34567", "94,573,295.00", "March 09, 2023", "North Manila District Engineering Office", True, "Valid: 5 digits after letter"),
+    ("12AB345", "47,875,326.90", "March 28, 2023", "North Manila District Engineering Office", True, "Valid: 2 letters"),
+    # Invalid cases - should be REJECTED
+    ("1A123", "invalid", "2/3/2022", "RandomOffice", False, "Invalid: 1 digit before letter, wrong date format"),
+    ("AB123", "abc123", "13/45/2099", "FakeOffice", False, "Invalid: no leading digits, invalid cost/date/office"),
 ]
 
 
 def main():
-    print("=" * 120)
-    print("PART A: FSA VALIDATION - PREDEFINED TEST CASES")
-    print("=" * 120)
+    print("=" * 140)
+    print("PART A: FSA VALIDATION - PREDEFINED TEST CASES (Valid & Invalid)")
+    print("=" * 140)
     print()
 
     field_stats_fsa = {
@@ -36,54 +42,65 @@ def main():
         "Implementing Office": {"total": 0, "correct": 0},
     }
 
-    print(f"{'Input':<15} {'Field':<20} {'Expected':<25} {'Actual':<25} {'Status':<8}")
-    print("-" * 120)
+    print(f"{'Input ID':<12} {'Input Cost':<18} {'Input Date':<18} {'Status':<12} {'Description':<35}")
+    print("-" * 140)
 
-    for input_val, exp_id, exp_cost, exp_date, exp_office in TEST_CASES:
-        actual_id = exp_id
-        actual_cost = exp_cost
-        actual_date = exp_date
-        actual_office = exp_office
+    for input_id, input_cost, input_date, input_office, should_be_valid, description in TEST_CASES:
+        # Run FSAs
+        id_result = fsa_contract_id.run_fsa(input_id)
+        cost_result = fsa_contract_cost.run_fsa(input_cost)
+        date_result = fsa_contract_dates.run_fsa(input_date)
+        office_result = fsa_implementing_office.run_fsa(input_office)
 
-        id_match = normalize(actual_id) == normalize(exp_id)
-        cost_match = normalize(actual_cost) == normalize(exp_cost)
-        date_match = normalize(actual_date) == normalize(exp_date)
-        office_match = normalize(actual_office) == normalize(exp_office)
+        # For valid cases: FSA should accept (matched=True)
+        # For invalid cases: FSA should reject (matched=False)
+        id_correct = (id_result["matched"] == should_be_valid)
+        cost_correct = (cost_result["matched"] == should_be_valid)
+        date_correct = (date_result["matched"] == should_be_valid)
+        office_correct = (office_result["matched"] == should_be_valid)
 
-        print(f"{input_val:<15} {'Contract ID':<20} {exp_id:<25} {actual_id:<25} {'PASS' if id_match else 'FAIL':<8}")
+        id_status = "PASS (Accept)" if id_result["matched"] else "PASS (Reject)" if not should_be_valid else "FAIL"
+        cost_status = "PASS (Accept)" if cost_result["matched"] else "PASS (Reject)" if not should_be_valid else "FAIL"
+        date_status = "PASS (Accept)" if date_result["matched"] else "PASS (Reject)" if not should_be_valid else "FAIL"
+        office_status = "PASS (Accept)" if office_result["matched"] else "PASS (Reject)" if not should_be_valid else "FAIL"
+
+        print(f"{input_id:<12} {input_cost:<18} {input_date:<18} {id_status:<12} {description:<35}")
+
         field_stats_fsa["Contract ID"]["total"] += 1
-        if id_match:
+        if id_correct:
             field_stats_fsa["Contract ID"]["correct"] += 1
 
-        print(f"{'':<15} {'Contract Cost':<20} {exp_cost:<25} {actual_cost:<25} {'PASS' if cost_match else 'FAIL':<8}")
         field_stats_fsa["Contract Cost"]["total"] += 1
-        if cost_match:
+        if cost_correct:
             field_stats_fsa["Contract Cost"]["correct"] += 1
 
-        print(f"{'':<15} {'Contract Date':<20} {exp_date:<25} {actual_date:<25} {'PASS' if date_match else 'FAIL':<8}")
         field_stats_fsa["Contract Date"]["total"] += 1
-        if date_match:
+        if date_correct:
             field_stats_fsa["Contract Date"]["correct"] += 1
 
-        print(f"{'':<15} {'Implementing Office':<20} {exp_office:<25} {actual_office:<25} {'PASS' if office_match else 'FAIL':<8}")
         field_stats_fsa["Implementing Office"]["total"] += 1
-        if office_match:
+        if office_correct:
             field_stats_fsa["Implementing Office"]["correct"] += 1
 
-        print("-" * 120)
+        print("-" * 140)
 
     print()
-    print("FSA Test Results (Predefined Cases)")
-    print("=" * 60)
+    print("FSA Validation Results")
+    print("=" * 70)
+    fsa_overall_pass = 0
     for field, stats in field_stats_fsa.items():
         accuracy = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
-        print(f"{field:<25} {stats['correct']}/{stats['total']} passed ({accuracy:.2f}%)")
+        fsa_overall_pass += accuracy
+        print(f"{field:<25} {stats['correct']}/{stats['total']} correct ({accuracy:.2f}%)")
+
+    fsa_avg_accuracy = fsa_overall_pass / 4
+    print(f"\n{'Overall FSA Validation':<25} {fsa_avg_accuracy:.2f}%")
     print()
 
     # Part B: Real extraction validation
-    print("=" * 120)
-    print("PART B: CONTRACT ID EXTRACTION FROM REAL DPWH DATA")
-    print("=" * 120)
+    print("=" * 140)
+    print("PART B: EXTRACTION VALIDATION AGAINST REAL DPWH DATA")
+    print("=" * 140)
     print()
 
     try:
@@ -162,7 +179,7 @@ def main():
 
     print()
     print("=" * 180)
-    print("Field Extraction Accuracy (Real Data)")
+    print("Field Extraction Accuracy")
     print("=" * 180)
     matched_count = id_correct
 
@@ -175,8 +192,8 @@ def main():
     print("=" * 180)
     print("VALIDATION SUMMARY")
     print("=" * 180)
-    print(f"FSA Pattern Validation (Test Cases):        100.00% - All predefined patterns validated")
-    print(f"Real Data Extraction Success:               {(matched_count/total_gt*100):.2f}% - Successful extraction from DPWH PDFs")
+    print(f"FSA Validation (Test Cases):                {fsa_avg_accuracy:.2f}% - Correct acceptance/rejection")
+    print(f"Real Data Extraction Success:               {(matched_count/total_gt*100):.2f}% - Extraction from DPWH PDFs")
     print(f"Contract ID Accuracy:                       {(id_correct/matched_count*100):.2f}%" if matched_count > 0 else "Contract ID Accuracy:                       N/A")
     print(f"Contract Cost Accuracy:                     {(cost_correct/matched_count*100):.2f}%" if matched_count > 0 else "Contract Cost Accuracy:                     N/A")
     print(f"Contract Date Accuracy:                     {(date_correct/matched_count*100):.2f}%" if matched_count > 0 else "Contract Date Accuracy:                     N/A")
