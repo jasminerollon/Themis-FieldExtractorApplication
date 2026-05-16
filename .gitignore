@@ -11,7 +11,6 @@ venv/
 env/
 
 # Generated pipeline data (reproducible from PDFs + scripts)
-dpwh_fsa_extractor/data/raw/*.pdf
 dpwh_fsa_extractor/data/extracted/
 dpwh_fsa_extractor/output/
 
